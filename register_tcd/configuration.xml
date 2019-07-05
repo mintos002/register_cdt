@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<opencv_storage>
+
+  <!-- Path to the output_images folder
+          - by default images will be searched in the application folder,
+            inside a folder named output_images that follows this scheme:
+            -> output_images
+                      |-> color
+                      |     |-> c_20196141560502490749.png
+                      |     |-> ...
+                      |-> thermo
+                      |     |-> t_20196141560502490749.png
+                      |     |-> ...                       
+            set the images path surrounded by "". For example: "C:\dir\thermo" -->
+  <PathThermoImages>"C:\Users\aljuasin\Desktop\captura_tcd\imagenes\output_imagesx640_80\thermo"</PathThermoImages>
+  <PathColorImages>"C:\Users\aljuasin\Desktop\captura_tcd\imagenes\output_imagesx640_80\color"</PathColorImages>
+  <PathDepthImages>"C:\Users\aljuasin\Desktop\captura_tcd\imagenes\output_imagesx640_80\depth"</PathDepthImages>
+  <!-- Path to the .xml file of calibration parameters (the output of calibration_tcd app) -->
+  <InputPath>"C:\Users\aljuasin\Desktop\captura_tcd\imagenes\output_imagesx640_80\out_camera_extrinsics_640_80.xml"</InputPath>
+  <!-- Path to the .xml output file that this app will generate -->
+  <OutputPath>"C:\Users\aljuasin\Desktop\captura_tcd\imagenes\output_imagesx640_80\out_camera_extrinsics_640_80.xml"</OutputPath>
+
+  <!-- Flip images
+        - 0 no flip (Default)
+        - 1 flip thermal 
+        - 2 flip color & depth
+        - 3 flip all -->
+  <FlipMode>0</FlipMode>
+  <!-- Modes of the calibration pattern
+        - 0 if the calibration pattern is hot and the background is cold (default)
+        - 1 if the calibration pattern is cold and the backtround is hot  -->
+  <PatternTemp>0</PatternTemp>
+  <!-- Color of the calibration pattern
+        - 0 Black board with white circles (default)
+        - 1 White board with black circles -->
+  <PatternColor>0</PatternColor>
+
+  <!-- Number of inner corners per a item row and column. (square, circle) -->
+  <BoardSize_Width>9</BoardSize_Width>
+  <BoardSize_Height>3</BoardSize_Height>
+  <!-- Speciry the diameter of the circles (mm) -->
+  <CircleSize>20.0</CircleSize>
+
+  <!-- Show the overlay of the thermal and color images 
+        - 0 do not show (default)
+        - 1 do show-->
+  <ShowOverlay>1</ShowOverlay>
+
+</opencv_storage>
