@@ -15,6 +15,7 @@
 #include "opencv2/videoio/videoio.hpp"
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/rgbd.hpp"
+#include "opencv2/photo.hpp"
 
 #include "librealsense2/rs.hpp"
 
@@ -452,6 +453,13 @@ static cv::Scalar randomColor(cv::RNG& rng)
 	return cv::Scalar(icolor & 255, (icolor >> 8) & 255, (icolor >> 16) & 255);
 }
 
+static void warpFrame(const cv::Mat& image, const cv::Mat& depth, const cv::Size& imagePlanec2, const cv::Mat& Rt, const cv::Mat& Kc1,
+	const cv::Mat& Kc2, const cv::Mat& Dc2, cv::Mat& warpedImage, cv::Mat& warpedDepth);
+
+static void to3d(const cv::Mat& depth, const cv::Mat& K, const float& inputDepthToMetersScale, cv::Mat& cloud);
+
+static void refill(const cv::Mat& color, const double& radius, cv::Mat& result);
+
 
 //void computeC2MC1(const cv::Mat &R1, const cv::Mat &tvec1, const cv::Mat &R2, const cv::Mat &tvec2,
 //	cv::Mat &R_1to2, cv::Mat &tvec_1to2);
@@ -529,12 +537,12 @@ int main(int argc, char* argv[])
 		system("pause");
 		return -1;
 	}
-	if (out_data_name.empty())
+	/*if (out_data_name.empty())
 	{
 		printf("No output file path/name defined.\n");
 		system("pause");
 		return -1;
-	}
+	}*/
 	if (flip_mode < 0 && flip_mode > 1) // Check flip mode
 	{
 		printf("Invalid flip mode.\n");
@@ -710,54 +718,68 @@ int main(int argc, char* argv[])
 
 		cv::Mat registeredResult, registeredResult2, registeredResult2_c;
 
+		cv::Mat cloud;
+		//to3d(d_frame, in_color_cameraMatrix, depth_scale, cloud);
+
 		//cv::rgbd::registerDepth(in_color_cameraMatrix, in_thermal_camaeraMatrix, in_thermal_distCoeff, Rt.inv(), d_frame, t_frame.size(), registeredResult, dilatationC1);
-		pRegistration(d_frame, c_frame, t_frame, in_color_cameraMatrix, in_thermal_camaeraMatrix, in_thermal_distCoeff, Rt.inv(), t_frame.size(), dilatationC1, depth_scale, registeredResult2, registeredResult2_c);
+		//pRegistration(d_frame, c_frame, t_frame, in_color_cameraMatrix, in_thermal_camaeraMatrix, in_thermal_distCoeff, Rt.inv(), t_frame.size(), dilatationC1, depth_scale, registeredResult2, registeredResult2_c);
+		cv::Mat warpedImage, warpedDepth;
+		warpFrame(c_frame, d_frame, t_frame.size(), Rt.inv(), in_color_cameraMatrix, in_thermal_camaeraMatrix, in_thermal_distCoeff, warpedImage, warpedDepth);
 
-		if (!t_frame.empty() && !c_frame.empty() && !d_frame.empty())
+		refill(warpedImage, 2, warpedImage);
+
+		if (!t_frame.empty() && !c_frame.empty() && !d_frame.empty() && !warpedDepth.empty() && !warpedImage.empty())
 		{
-			cv::Mat x;
-			double rmin, rmax;
-			cv::minMaxIdx(registeredResult, &rmin, &rmax);
-			cv::Mat adjMap;
+			// Depth and Color images
+			cv::Mat rs_out, rsd_cm;
+			double rsmin, rsmax;
+			cv::minMaxIdx(d_frame, &rsmin, &rsmax);
 
-			registeredResult.convertTo(adjMap, CV_8UC1, 255 / (rmax - rmin), -rmin);
-			normalize(adjMap, adjMap, 255, 0, cv::NORM_MINMAX);
-			applyColorMap(adjMap, adjMap, cv::COLORMAP_JET);
-			cv::Mat akn;
-			t_frame.convertTo(akn, CV_8U, 1 / 256.0);
-			cv::cvtColor(akn, x, CV_GRAY2RGB);
+			d_frame.convertTo(rsd_cm, CV_8UC1, 255 / (rsmax - rsmin), -rsmin);
+			applyColorMap(rsd_cm, rsd_cm, cv::COLORMAP_JET);
 
-			cv::Mat akan;
+			double rs_alpha = 0.8;
+			double rs_beta = (1.0 - rs_alpha);
+			cv::addWeighted(rsd_cm, rs_alpha, c_frame, rs_beta, 0.0, rs_out);
+
+			cv::namedWindow("Color - depth image", cv::WINDOW_AUTOSIZE);
+			cv::imshow("Color - depth image", rs_out);
+
+			// rDepth and thermo
+			cv::Mat dt_out, wd_cm, t_f;
+
+			double tdmin, tdmax;
+			cv::minMaxIdx(warpedDepth, &tdmin, &tdmax);
+			
+			warpedDepth.convertTo(wd_cm, CV_8UC1, 255 / (tdmax - tdmin), -tdmin);
+			normalize(wd_cm, wd_cm, 255, 0, cv::NORM_MINMAX);
+			applyColorMap(wd_cm, wd_cm, cv::COLORMAP_JET);
+			
+			t_frame.convertTo(t_f, CV_8U, 1 / 256.0);
+			cv::cvtColor(t_f, t_f, CV_GRAY2RGB);
+
+			double dt_alpha = 0.5;
+			double dt_beta = (1.0 - dt_alpha);
+			cv::addWeighted(t_f, dt_alpha, wd_cm, dt_beta, 0.0, dt_out);
+
+			cv::namedWindow("Projected depth - thermal image", cv::WINDOW_AUTOSIZE);
+			cv::imshow("Projected depth - thermal image", dt_out);
+
+			// rColor and thermo
+			cv::Mat ct_out, wc_cm;
+
+			warpedImage.copyTo(wc_cm);
+
 			double alpha1 = 0.5;
 			double beta1 = (1.0 - alpha1);
-			cv::addWeighted(x, alpha1, adjMap, beta1, 0.0, akan);
+			cv::addWeighted(t_f, alpha1, wc_cm, beta1, 0.0, ct_out);
 
-			cv::namedWindow("x", cv::WINDOW_AUTOSIZE);
-			cv::imshow("x", akan);
-
-			/*d_img.convertTo(d_img, CV_8UC1, 1 / 256.0);
-			normalize(d_img, d_img, 255, 0, cv::NORM_MINMAX);
-			applyColorMap(d_img, d_img, cv::COLORMAP_JET);
-			cv::namedWindow("depth", cv::WINDOW_AUTOSIZE);
-			cv::imshow("depth", d_img);*/
+			cv::namedWindow("Projected color - thermal image", cv::WINDOW_AUTOSIZE);
+			cv::imshow("Projected color - thermal image", ct_out);
+			
 
 			// ----------------------
-			cv::Mat img1;
-			cv::Mat akan2;
-			cv::Mat adjMap2;
-			double dmin, dmax;
-
-			cv::minMaxIdx(d_frame, &dmin, &dmax);
-			d_frame.convertTo(adjMap2, CV_8UC1, 255 / (dmax - dmin), -dmin);
-			applyColorMap(adjMap2, img1, cv::COLORMAP_JET);
-
-			double alpha2 = 0.9;
-			double beta2 = (1.0 - alpha2);
-			cv::addWeighted(img1, alpha2, c_frame, beta2, 0.0, akan2);
-
-			cv::namedWindow("Color - depth camera", cv::WINDOW_AUTOSIZE);
-			cv::imshow("Color - depth camera", akan2);
-
+			
 		}
 		
 		char key = (char)cv::waitKey(0);
@@ -772,6 +794,131 @@ int main(int argc, char* argv[])
 	system("pause");
 	return -1;
 }
+
+
+static void to3d(const cv::Mat& depth, const cv::Mat& K, const float& inputDepthToMetersScale, cv::Mat& cloud)
+{
+	cloud.create(depth.size(), CV_32FC3);
+	for (int j = 0; j < depth.rows; ++j)
+	{
+		for (int i = 0; i < depth.cols; ++i)
+		{
+			float rescaled_depth = (float)depth.at<ushort>(j, i) * inputDepthToMetersScale;
+
+			// If the DepthDepth is of type unsigned short, zero is a sentinel value to indicate
+			// no depth. CV_32F and CV_64F should already have NaN for no depth values.
+			if (rescaled_depth == 0)
+			{
+				rescaled_depth = std::numeric_limits<float>::quiet_NaN();
+			}
+			float x, y, z;
+			x = (i - (float)K.at<double>(0, 2)) * rescaled_depth / (float)K.at<double>(0, 0);
+			y = (j - (float)K.at<double>(1, 2)) * rescaled_depth / (float)K.at<double>(1, 1);
+			z = rescaled_depth;
+
+			cloud.at<cv::Point3f>(j, i).x = x;
+			cloud.at<cv::Point3f>(j, i).y = y;
+			cloud.at<cv::Point3f>(j, i).z = z;
+
+		}
+	}
+}
+
+
+
+static void refill(const cv::Mat& color, const double& radius, cv::Mat& result)
+{
+	CV_Assert(!color.empty());
+	CV_Assert(color.type() == CV_8UC3 || color.type() == CV_8UC1);
+	cv::Mat image;
+	color.copyTo(image);
+	if (image.type() == CV_8UC3)
+	{
+		cv::cvtColor(image, image, cv::COLOR_RGB2GRAY);
+	}
+
+	cv::Mat mask(image.size(), CV_8UC1);
+	mask = cv::Scalar(0);
+	for (int i = 0; i < image.size().height; i++)
+	{
+		for (int j = 0; j < image.size().width; j++)
+		{
+			if (image.at<uchar>(i, j) == 0)
+			{
+				mask.at<uchar>(i, j) = 255;
+			}
+		}
+	}
+
+	inpaint(color, mask, result, radius, CV_INPAINT_TELEA);
+
+}
+
+
+
+static void warpFrame(const cv::Mat& image, const cv::Mat& depth, const cv::Size& imagePlanec2, const cv::Mat& Rt, const cv::Mat& Kc1,
+	const cv::Mat& Kc2, const cv::Mat& Dc2, cv::Mat& warpedImage, cv::Mat& warpedDepth)
+{
+	CV_Assert(!image.empty());
+	CV_Assert(image.type() == CV_8UC3);
+
+	CV_Assert(depth.size() == image.size());
+	CV_Assert(depth.type() == CV_16UC1);
+
+	warpedImage.create(imagePlanec2, CV_8UC3);
+	warpedImage = cv::Scalar(0);
+
+	cv::Mat bgr[3], cb, cg, cr;
+	split(image, bgr);
+
+	cb = cv::Mat::zeros(imagePlanec2, CV_8UC1);
+	cg = cv::Mat::zeros(imagePlanec2, CV_8UC1);
+	cr = cv::Mat::zeros(imagePlanec2, CV_8UC1);
+
+	std::vector<cv::Mat> result;
+	result.push_back(cb);
+	result.push_back(cg);
+	result.push_back(cr);
+
+	warpedDepth.create(imagePlanec2, CV_32FC1);
+	warpedDepth = cv::Scalar(FLT_MAX);
+
+	cv::Mat cloud;
+	cv::rgbd::depthTo3d(depth, Kc1, cloud);
+	
+	cv::Mat warpedCloud, warpedImagePoints;
+	perspectiveTransform(cloud, warpedCloud, Rt);
+	projectPoints(warpedCloud.reshape(3, 1), cv::Mat(3, 1, CV_32FC1, cv::Scalar(0)), cv::Mat(3, 1, CV_32FC1, cv::Scalar(0)), Kc2, Dc2, warpedImagePoints);
+	warpedImagePoints = warpedImagePoints.reshape(2, cloud.rows);
+	cv::Rect r(0, 0, imagePlanec2.width, imagePlanec2.height);
+	for (int y = 0; y < cloud.rows; y++)
+	{
+		for (int x = 0; x < cloud.cols; x++)
+		{
+			cv::Point p = warpedImagePoints.at<cv::Point2f>(y, x);
+			if (r.contains(p))
+			{
+				float curDepth = warpedDepth.at<float>(p.y, p.x);
+				float newDepth = warpedCloud.at<cv::Point3f>(y, x).z;
+				if (newDepth < curDepth && newDepth > 0)
+				{
+					//warpedImage.at<uchar>(p.y, p.x) = image.at<uchar>(y, x);
+					result[0].at<uchar>(p.y, p.x) = bgr[0].at<uchar>(y, x);
+					result[1].at<uchar>(p.y, p.x) = bgr[1].at<uchar>(y, x);
+					result[2].at<uchar>(p.y, p.x) = bgr[2].at<uchar>(y, x);
+
+					warpedDepth.at<float>(p.y, p.x) = newDepth * 1000;
+				}
+			}
+		}
+	}
+	cv::merge(result, warpedImage);
+	warpedDepth.setTo(std::numeric_limits<float>::quiet_NaN(), warpedDepth > 100000);
+	warpedDepth.convertTo(warpedDepth, CV_16UC1/*, USHRT_MAX*/);
+
+}
+
+
 
 
 
