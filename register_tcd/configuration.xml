@@ -12,12 +12,12 @@
                       |     |-> t_20196141560502490749.png
                       |     |-> ...                       
             set the images path surrounded by "". For example: "C:\dir\thermo" -->
-  <PathThermoImages>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\patron\output_imagesx848_80\thermo"</PathThermoImages>
-  <PathColorImages>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\patron\output_imagesx848_80\color"</PathColorImages>
-  <PathDepthImages>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\patron\output_imagesx848_80\depth"</PathDepthImages>
-  <NumImages>80</NumImages>
+  <PathThermoImages>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\jetson\jetson\thermo"</PathThermoImages>
+  <PathColorImages>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\jetson\jetson\color"</PathColorImages>
+  <PathDepthImages>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\jetson\jetson\depth"</PathDepthImages>
+  <NumImages>50</NumImages>
   <!-- Path to the .xml file of calibration parameters (the output of calibration_tcd app) -->
-  <InputPath>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\patron\output_imagesx848_80\manual_extrinsics_848.xml"</InputPath>
+  <InputPath>"C:\Users\aljuasin\Desktop\captura_tcd\_imagenes\patron\output_imagesx640_80\out_camera_extrinsics_640_80.xml"</InputPath>
 
   <!-- Flip images
         - 0 no flip (Default)

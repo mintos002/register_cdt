@@ -709,8 +709,8 @@ int main(int argc, char* argv[])
 		//Tm.at<double>(1, 0) = T.at<double>(1, 0) * (double)depth_scale;
 		//Tm.at<double>(2, 0) = T.at<double>(2, 0) * (double)depth_scale;
 
-		Tm.at<double>(0, 0) = T.at<double>(0, 0) * 0.001;
-		Tm.at<double>(1, 0) = T.at<double>(1, 0) * 0.001;
+		Tm.at<double>(0, 0) = /*-50*0.001*/T.at<double>(0, 0) * 0.001;
+		Tm.at<double>(1, 0) = /*-22*0.001T*/T.at<double>(1, 0) * 0.001;
 		Tm.at<double>(2, 0) = T.at<double>(2, 0) * 0.001;
 
 		cv::hconcat(R, Tm, Rt);
@@ -726,7 +726,8 @@ int main(int argc, char* argv[])
 		cv::Mat warpedImage, warpedDepth;
 		warpFrame(c_frame, d_frame, t_frame.size(), Rt.inv(), in_color_cameraMatrix, in_thermal_camaeraMatrix, in_thermal_distCoeff, warpedImage, warpedDepth);
 
-		refill(warpedImage, 2, warpedImage);
+		cv::Mat projColor;
+		refill(warpedImage, 2, projColor);
 
 		if (!t_frame.empty() && !c_frame.empty() && !d_frame.empty() && !warpedDepth.empty() && !warpedImage.empty())
 		{
@@ -830,12 +831,18 @@ static void refill(const cv::Mat& color, const double& radius, cv::Mat& result)
 {
 	CV_Assert(!color.empty());
 	CV_Assert(color.type() == CV_8UC3 || color.type() == CV_8UC1);
-	cv::Mat image;
+	cv::Mat image, blur;
 	color.copyTo(image);
 	if (image.type() == CV_8UC3)
 	{
 		cv::cvtColor(image, image, cv::COLOR_RGB2GRAY);
 	}
+	cv::Mat kernel(7, 7, CV_32F);
+	kernel = cv::Scalar(1);
+
+	cv::copyMakeBorder(image, image, 1, 1, 1, 1, cv::BORDER_REPLICATE);
+
+	cv::morphologyEx(image, blur, cv::MORPH_DILATE, kernel);
 
 	cv::Mat mask(image.size(), CV_8UC1);
 	mask = cv::Scalar(0);
@@ -843,14 +850,17 @@ static void refill(const cv::Mat& color, const double& radius, cv::Mat& result)
 	{
 		for (int j = 0; j < image.size().width; j++)
 		{
-			if (image.at<uchar>(i, j) == 0)
+			if (image.at<uchar>(i, j) == 0 && !blur.at<uchar>(i, j) == 0)
 			{
 				mask.at<uchar>(i, j) = 255;
 			}
+
 		}
 	}
 
 	inpaint(color, mask, result, radius, CV_INPAINT_TELEA);
+
+	
 
 }
 
