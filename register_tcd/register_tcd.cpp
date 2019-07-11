@@ -458,7 +458,7 @@ static void warpFrame(const cv::Mat& image, const cv::Mat& depth, const cv::Size
 
 static void to3d(const cv::Mat& depth, const cv::Mat& K, const float& inputDepthToMetersScale, cv::Mat& cloud);
 
-static void refill(const cv::Mat& color, const double& radius, cv::Mat& result);
+static void refill(const cv::Mat& color, const double& radius, const int& kernelSize, cv::Mat& result);
 
 
 //void computeC2MC1(const cv::Mat &R1, const cv::Mat &tvec1, const cv::Mat &R2, const cv::Mat &tvec2,
@@ -709,8 +709,8 @@ int main(int argc, char* argv[])
 		//Tm.at<double>(1, 0) = T.at<double>(1, 0) * (double)depth_scale;
 		//Tm.at<double>(2, 0) = T.at<double>(2, 0) * (double)depth_scale;
 
-		Tm.at<double>(0, 0) = /*-50*0.001*/T.at<double>(0, 0) * 0.001;
-		Tm.at<double>(1, 0) = /*-22*0.001T*/T.at<double>(1, 0) * 0.001;
+		Tm.at<double>(0, 0) = T.at<double>(0, 0) * 0.001;
+		Tm.at<double>(1, 0) = T.at<double>(1, 0) * 0.001;
 		Tm.at<double>(2, 0) = T.at<double>(2, 0) * 0.001;
 
 		cv::hconcat(R, Tm, Rt);
@@ -727,10 +727,26 @@ int main(int argc, char* argv[])
 		warpFrame(c_frame, d_frame, t_frame.size(), Rt.inv(), in_color_cameraMatrix, in_thermal_camaeraMatrix, in_thermal_distCoeff, warpedImage, warpedDepth);
 
 		cv::Mat projColor;
-		refill(warpedImage, 2, projColor);
+		refill(warpedImage, 1, 5, projColor);
 
 		if (!t_frame.empty() && !c_frame.empty() && !d_frame.empty() && !warpedDepth.empty() && !warpedImage.empty())
 		{
+			// Convert tframe to colormap
+			cv::Mat t_f;
+			double tmin, tmax;
+			cv::minMaxIdx(t_frame, &tmin, &tmax);
+			t_frame.convertTo(t_f, CV_8U, 255 / (tmax - tmin), -tmin);
+			//cv::cvtColor(t_f, t_f, CV_GRAY2RGB);
+			applyColorMap(t_f, t_f, cv::COLORMAP_HOT);
+
+			// Convert warpedDepth to colormap
+			cv::Mat wd_cm;
+			double dmin, dmax;
+			cv::minMaxIdx(warpedDepth, &dmin, &dmax);
+			warpedDepth.convertTo(wd_cm, CV_8UC1, 255 / (dmax - dmin), -dmin);
+			normalize(wd_cm, wd_cm, 255, 0, cv::NORM_MINMAX);
+			applyColorMap(wd_cm, wd_cm, cv::COLORMAP_JET);
+
 			// Depth and Color images
 			cv::Mat rs_out, rsd_cm;
 			double rsmin, rsmax;
@@ -747,18 +763,8 @@ int main(int argc, char* argv[])
 			cv::imshow("Color - depth image", rs_out);
 
 			// rDepth and thermo
-			cv::Mat dt_out, wd_cm, t_f;
-
-			double tdmin, tdmax;
-			cv::minMaxIdx(warpedDepth, &tdmin, &tdmax);
-			
-			warpedDepth.convertTo(wd_cm, CV_8UC1, 255 / (tdmax - tdmin), -tdmin);
-			normalize(wd_cm, wd_cm, 255, 0, cv::NORM_MINMAX);
-			applyColorMap(wd_cm, wd_cm, cv::COLORMAP_JET);
-			
-			t_frame.convertTo(t_f, CV_8U, 1 / 256.0);
-			cv::cvtColor(t_f, t_f, CV_GRAY2RGB);
-
+			cv::Mat dt_out;
+						
 			double dt_alpha = 0.5;
 			double dt_beta = (1.0 - dt_alpha);
 			cv::addWeighted(t_f, dt_alpha, wd_cm, dt_beta, 0.0, dt_out);
@@ -766,18 +772,29 @@ int main(int argc, char* argv[])
 			cv::namedWindow("Projected depth - thermal image", cv::WINDOW_AUTOSIZE);
 			cv::imshow("Projected depth - thermal image", dt_out);
 
-			// rColor and thermo
-			cv::Mat ct_out, wc_cm;
+			// rColor Points and thermo
+			cv::Mat ctp_out, wc_cm;
 
 			warpedImage.copyTo(wc_cm);
 
 			double alpha1 = 0.5;
 			double beta1 = (1.0 - alpha1);
-			cv::addWeighted(t_f, alpha1, wc_cm, beta1, 0.0, ct_out);
+			cv::addWeighted(t_f, alpha1, wc_cm, beta1, 0.0, ctp_out);
+
+			cv::namedWindow("Projected color points - thermal image", cv::WINDOW_AUTOSIZE);
+			cv::imshow("Projected color points - thermal image", ctp_out);
+
+			// rColor and thermo
+			cv::Mat ct_out, pc_cm;
+
+			projColor.copyTo(pc_cm);
+
+			double alpha2 = 0.7;
+			double beta2 = (1.0 - alpha2);
+			cv::addWeighted(t_f, alpha2, pc_cm, beta2, 0.0, ct_out);
 
 			cv::namedWindow("Projected color - thermal image", cv::WINDOW_AUTOSIZE);
 			cv::imshow("Projected color - thermal image", ct_out);
-			
 
 			// ----------------------
 			
@@ -794,6 +811,21 @@ int main(int argc, char* argv[])
 	cv::destroyAllWindows();
 	system("pause");
 	return -1;
+}
+
+static void doColormap(const cv::Mat& image, cv::Mat& image_out, const float& min, const float& max, const int& cvColormap)
+{
+	
+	cv::Mat mask;
+	double tmin, tmax;
+
+	cv::Mat t_f;
+	
+	cv::minMaxIdx(image, &tmin, &tmax);
+	image.convertTo(t_f, CV_8U, 255 / (tmax - tmin), -tmin);
+	//cv::cvtColor(t_f, t_f, CV_GRAY2RGB);
+	applyColorMap(t_f, t_f, cv::COLORMAP_HOT);
+
 }
 
 
@@ -827,41 +859,46 @@ static void to3d(const cv::Mat& depth, const cv::Mat& K, const float& inputDepth
 
 
 
-static void refill(const cv::Mat& color, const double& radius, cv::Mat& result)
+static void refill(const cv::Mat& color, const double& radius, const int& kernelSize, cv::Mat& result)
 {
 	CV_Assert(!color.empty());
 	CV_Assert(color.type() == CV_8UC3 || color.type() == CV_8UC1);
-	cv::Mat image, blur;
+	cv::Mat image, image_gray, blur;
 	color.copyTo(image);
-	if (image.type() == CV_8UC3)
-	{
-		cv::cvtColor(image, image, cv::COLOR_RGB2GRAY);
-	}
-	cv::Mat kernel(7, 7, CV_32F);
-	kernel = cv::Scalar(1);
-
+	// create border
 	cv::copyMakeBorder(image, image, 1, 1, 1, 1, cv::BORDER_REPLICATE);
 
-	cv::morphologyEx(image, blur, cv::MORPH_DILATE, kernel);
-
-	cv::Mat mask(image.size(), CV_8UC1);
-	mask = cv::Scalar(0);
-	for (int i = 0; i < image.size().height; i++)
+	image.copyTo(image_gray);
+	// If image is rgb convert to single channel
+	if (image.type() == CV_8UC3)
 	{
-		for (int j = 0; j < image.size().width; j++)
+		cv::cvtColor(image, image_gray, cv::COLOR_RGB2GRAY);
+	}
+
+	cv::Mat kernel(kernelSize, kernelSize, CV_32F);
+	//cv::Mat kernel(5, 5, CV_32F);
+	kernel = cv::Scalar(1);
+
+	cv::morphologyEx(image_gray, blur, cv::MORPH_DILATE, kernel);
+
+	cv::Mat mask(image_gray.size(), CV_8UC1);
+	mask = cv::Scalar(0);
+
+	for (int i = 0; i < image_gray.size().height; i++)
+	{
+		for (int j = 0; j < image_gray.size().width; j++)
 		{
-			if (image.at<uchar>(i, j) == 0 && !blur.at<uchar>(i, j) == 0)
+			if (image_gray.at<uchar>(i, j) == 0 && !blur.at<uchar>(i, j) == 0)
 			{
 				mask.at<uchar>(i, j) = 255;
 			}
 
 		}
 	}
-
-	inpaint(color, mask, result, radius, CV_INPAINT_TELEA);
-
-	
-
+	cv::Mat out;
+	inpaint(image, mask, out, radius, CV_INPAINT_TELEA);
+	cv::Rect r(1, 1, out.cols - 2, out.rows - 2);
+	result = out(r);
 }
 
 
@@ -890,12 +927,15 @@ static void warpFrame(const cv::Mat& image, const cv::Mat& depth, const cv::Size
 	result.push_back(cg);
 	result.push_back(cr);
 
+	cv::Mat mask(imagePlanec2, CV_8UC1);
+	mask = cv::Scalar(0);
+
 	warpedDepth.create(imagePlanec2, CV_32FC1);
 	warpedDepth = cv::Scalar(FLT_MAX);
 
 	cv::Mat cloud;
 	cv::rgbd::depthTo3d(depth, Kc1, cloud);
-	
+
 	cv::Mat warpedCloud, warpedImagePoints;
 	perspectiveTransform(cloud, warpedCloud, Rt);
 	projectPoints(warpedCloud.reshape(3, 1), cv::Mat(3, 1, CV_32FC1, cv::Scalar(0)), cv::Mat(3, 1, CV_32FC1, cv::Scalar(0)), Kc2, Dc2, warpedImagePoints);
@@ -918,6 +958,9 @@ static void warpFrame(const cv::Mat& image, const cv::Mat& depth, const cv::Size
 					result[2].at<uchar>(p.y, p.x) = bgr[2].at<uchar>(y, x);
 
 					warpedDepth.at<float>(p.y, p.x) = newDepth * 1000;
+					
+					mask.at<uchar>(p.y, p.x) = 255;
+
 				}
 			}
 		}
